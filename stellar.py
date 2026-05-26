@@ -315,4 +315,42 @@ class StellarModel:
         if savepath: fig.savefig(savepath)
         return fig
 
-    def draw_cross_section
+    def draw_cross_section(self, ax, title="Cross Section"):
+        res, r = self._trim_result()
+        L, L0 = res["L"], res["L"][0]
+        
+        # Color matching logic based on core properties
+        colours = {(True, True): "#1f3b8a", (True, False): "#7fd0e3", (False, True): "#d62728", (False, False): "#ffd23f"}
+        order = np.argsort(-r)
+        
+        prev_col = None
+        for i in order:
+            col = colours[(L[i] < 0.995 * L0, bool(res["is_conv"][i]))]
+            if col != prev_col:
+                ax.add_patch(Circle((0, 0), r[i], fc=col, ec=col, lw=0, zorder=int(10-r[i]*5)))
+                prev_col = col
+
+        lim = float(np.max(r)) * 1.05
+        ax.set_xlim(-lim, lim)
+        ax.set_ylim(-lim, lim)
+        ax.set_aspect("equal")
+        ax.set_xlabel(r"$r / R_0$")
+        ax.set_ylabel(r"$r / R_0$")
+        ax.set_title(title, loc="left")
+
+    def plot_cross_section(self, savepath=None):
+        fig, ax = plt.subplots(figsize=(7, 7))
+        self.draw_cross_section(ax)
+        ax.legend(handles=[
+            Line2D([0], [0], marker="o", color="w", markerfacecolor=c, markersize=12, label=l)
+            for c, l in [("#d62728", "Conv. Envelope"), ("#ffd23f", "Rad. Envelope"), ("#7fd0e3", "Core Zone")]
+        ], loc="upper right")
+        plt.tight_layout()
+        if savepath: fig.savefig(savepath)
+        return fig
+
+    def plot_all(self, prefix="stellar_model"):
+        self.plot_profiles(savepath=f"{prefix}_profiles.png")
+        self.plot_gradients(savepath=f"{prefix}_gradients.png")
+        self.plot_cross_section(savepath=f"{prefix}_cross.png")
+        plt.show()
