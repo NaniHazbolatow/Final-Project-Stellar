@@ -8,11 +8,11 @@ from scipy.interpolate import RectBivariateSpline
 from scipy.optimize import brentq
 
 # Physical constants (SI)
-G       = 6.6743e-11          # m^3 kg^-1 s^-2
-sigma   = 5.670374419e-8      # W m^-2 K^-4
-c_light = 2.99792458e8        # m s^-1
-k_B     = 1.380649e-23        # J K^-1
-m_u     = 1.66053906660e-27   # kg
+G = 6.6743e-11 # m^3 kg^-1 s^-2
+sigma = 5.670374419e-8 # W m^-2 K^-4
+c_light = 2.99792458e8 # m s^-1
+k_B = 1.380649e-23  # J K^-1
+m_u = 1.66053906660e-27  # kg
 
 
 # Interpolation 
@@ -45,13 +45,16 @@ class TableInterpolator:
     def check(self, sanity_rows, tol=0.05):
         """Run sanity check against known values. Returns True if all pass."""
         print(f"{'logT':>6} {'logR':>6} {'expected SI':>14} {'computed SI':>14} {'rel.err':>9}")
+        
         failed = 0
+        
         for logT, logR, expected in sanity_rows:
             T = 10 ** logT
             computed = self(T, 10 ** logR * (T / 1e6) ** 3 * 1e3, warn=False)
             err = abs(computed - expected) / expected
             if err >= tol: failed += 1
             print(f"{logT:6.3f} {logR:6.2f} {expected:14.3e} "f"{computed:14.3e} {err * 100:8.2f}%{'  FAIL' if err >= tol else ''}")
+            
         ok = failed == 0
         tag = "passed" if ok else f"WARNING: {failed} rows failed (>{tol*100:.0f}%)"
         print(f"{self.name}: {tag}")
@@ -82,16 +85,16 @@ class StellarModel:
 
     #  Equation of state
     def pressure(self, rho, T):
-        """Total pressure P [Pa] = radiation + ideal gas."""
+        """Total pressure P = radiation + ideal gas."""
         return self._a3c * T ** 4 + rho * k_B * T / (self.mu * m_u)
 
     def density(self, P, T):
-        """Density [kg/m^3] from pressure and temperature."""
+        """Density from pressure and temperature."""
         return (P - self._a3c * T ** 4) * self.mu * m_u / (k_B * T)
 
     #  Temperature gradients
     def compute_gradients(self, m, r, T, P, rho, L, kappa_val):
-        """Return (nabla_stable, nabla_ad, nabla_star, is_convective)."""
+        """Calculate stable/ad temperature gradients and checks for convection."""
         g  = G * m / r ** 2
         Hp = k_B * T / (self.mu * m_u * g)
         nabla_stable = 3 * kappa_val * rho * Hp * L / (64 * np.pi * r**2 * sigma * T**4)
@@ -116,18 +119,22 @@ class StellarModel:
             raise RuntimeError("xi root not bracketed")
 
         xi = brentq(f, 0.0, hi, xtol=1e-12, rtol=1e-10)
+        
         return nabla_stable, nabla_ad, xi**2 + (U * Om / lm) * xi + nabla_ad, True
 
     # ODE system to solve
     def _rhs(self, m, y):
         """dy/dm for the four stellar structure equations. y = [r, P, L, T]."""
         r, P, L, T = y
+        
         rho = self.density(P, T)
         kv  = self.kappa(T, rho, warn=False)
+        
         _, _, nstar, is_conv = self.compute_gradients(m, r, T, P, rho, L, kv)
+        
         dP = -G * m / (4 * np.pi * r**4)
-        dT = (nstar * (T / P) * dP if is_conv
-              else -3 * kv * L / (256 * np.pi**2 * sigma * r**4 * T**3))
+        dT = (nstar * (T / P) * dP if is_conv else -3 * kv * L / (256 * np.pi**2 * sigma * r**4 * T**3))
+        
         return np.array([1.0 / (4 * np.pi * r**2 * rho), dP,
                          self.epsilon(T, rho, warn=False), dT])
 
@@ -181,7 +188,9 @@ class StellarModel:
 
         h = {k: [v] for k, v in zip("rPLT", y)}
         h["m"] = [m]
-        for k, v in self._diagnostics(m, y).items(): h[k] = [v]
+        for k, v in self._diagnostics(m, y).items(): 
+            h[k] = [v]
+            
         stop = "max_steps"
 
         with warnings.catch_warnings(), np.errstate(divide="ignore", invalid="ignore"):
@@ -204,7 +213,9 @@ class StellarModel:
         self.result = {k: np.array(v) for k, v in h.items()}
         self.result["stop_reason"] = stop
         self.stop_reason = stop
+        
         if verbose: print(f"stopped after {len(self.result['m']) - 1} steps: {stop}")
+            
         return self
 
     # Goal analysis 
@@ -225,8 +236,8 @@ class StellarModel:
         res = self.result
         core_r, conv_in, conv_out = self._zone_bounds(res["r"], res["L"], res["is_conv"])
         conv_width = (conv_out - conv_in) / self.R0 if conv_out > conv_in else 0.0
-        return dict(m_frac=res["m"][-1] / self.M0, r_frac=res["r"][-1] / self.R0,
-                    L_frac=res["L"][-1] / self.L0, core_outer=core_r / self.R0,
+        return dict(m_frac=res["m"][-1] / self.M0, r_frac=res["r"][-1] / self.R0, 
+                    L_frac=res["L"][-1] / self.L0, core_outer=core_r / self.R0, 
                     conv_width=conv_width, stop=res["stop_reason"])
 
     # Plotting 
@@ -296,35 +307,46 @@ class StellarModel:
             Patch(fc=C["conv_in"],  alpha=0.35, label="Conv. (core)"),
         ], loc="lower center", ncol=4, fontsize=9, frameon=False,
             bbox_to_anchor=(0.5, -0.01))
+        
         fig.tight_layout(rect=[0, 0.03, 1, 1])
+        
         if savepath: fig.savefig(savepath)
+            
         return fig
 
     def plot_gradients(self, savepath=None):
         """Temperature gradients vs r/R0."""
         res, r = self._trim_result()
         fig, ax = plt.subplots(figsize=(9, 5.5))
+        
         ax.semilogy(r, res["nstable"], lw=2, color="#1f77b4", label=r"$\nabla_{\rm stable}$")
         ax.semilogy(r, res["nstar"],   lw=2, color="#ff7f0e", label=r"$\nabla^{*}$")
         ax.semilogy(r, res["nad"],     lw=2, color="#2ca02c", ls="--", label=r"$\nabla_{\rm ad}$")
+        
         ax.set_ylim(1e-1, 1e2); ax.set_xlim(0, 1.0)
         ax.set_xlabel(r"$r / R_0$"); ax.set_ylabel(r"$\nabla$")
         ax.set_title("Temperature gradients", loc="left", fontsize=13)
+        
         ax.legend(loc="upper center", ncol=2)
+        
         fig.tight_layout()
+        
         if savepath: fig.savefig(savepath)
+            
         return fig
 
     def draw_cross_section(self, ax, title="Cross section of star"):
         """Draw the cross-section on a given axes."""
         res, r = self._trim_result()
         L, L0, is_conv = res["L"], res["L"][0], res["is_conv"]
+        
         core_r, conv_in, conv_out = [v / self.R0 for v in
             self._zone_bounds(res["r"], L, is_conv)]
 
         colours = {(True, True): "#1f3b8a", (True, False): "#7fd0e3",
                    (False, True): "#d62728", (False, False): "#ffd23f"}
         order = np.argsort(-r)
+        
         prev_col, groups = None, []
         for i in order:
             col = colours[(L[i] < 0.995 * L0, bool(is_conv[i]))]
@@ -338,10 +360,17 @@ class StellarModel:
                                 lw=1.0, ls="--", zorder=5))
 
         lim = float(np.max(r)) * 1.10
-        ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_aspect("equal")
-        ax.set_xlabel(r"$r / R_0$"); ax.set_ylabel(r"$r / R_0$")
+        
+        ax.set_xlim(-lim, lim)
+        ax.set_ylim(-lim, lim)
+        ax.set_aspect("equal")
+        
+        ax.set_xlabel(r"$r / R_0$")
+        ax.set_ylabel(r"$r / R_0$")
         ax.set_title(title, loc="left", fontsize=13)
+        
         info = []
+        
         if conv_out > conv_in:
             info.append(f"outer conv.:  {conv_in:.2f}–{conv_out:.2f} $R_0$  (width {conv_out - conv_in:.2f})")
         if core_r > 0:
@@ -355,17 +384,26 @@ class StellarModel:
         """Standalone cross-section figure."""
         fig, ax = plt.subplots(figsize=(8, 8))
         self.draw_cross_section(ax)
+        
         ax.legend(handles=[
             Line2D([0], [0], marker="o", color="w", markerfacecolor=c, markersize=14, label=l)
             for c, l in [("#d62728", "Convection outside core"), ("#ffd23f", "Radiation outside core"),
                          ("#7fd0e3", "Radiation inside core"),   ("#1f3b8a", "Convection inside core")]
         ], loc="upper right")
+        
         fig.tight_layout()
+        
         if savepath: fig.savefig(savepath)
+            
         return fig
 
     def plot_all(self, prefix="fig"):
         """Generate all three plot types."""
-        self.plot_profiles(savepath=f"{prefix}_profiles.png");           plt.show()
-        self.plot_gradients(savepath=f"{prefix}_gradients.png");         plt.show()
-        self.plot_cross_section(savepath=f"{prefix}_cross_section.png"); plt.show()
+        self.plot_profiles(savepath=f"{prefix}_profiles.png")
+        plt.show()
+        
+        self.plot_gradients(savepath=f"{prefix}_gradients.png")
+        plt.show()
+        
+        self.plot_cross_section(savepath=f"{prefix}_cross_section.png")
+        plt.show()
