@@ -87,7 +87,7 @@ class StellarModel:
     def density(self, P, T):
         return (P - self._a3c * T**4) * self.mu * m_u / (k_B * T)
 
-    def compute_gradients(self, m, r, T, P, rho, L, kappa_val):
+def compute_gradients(self, m, r, T, P, rho, L, kappa_val):
         g = G * m / r**2
         Hp = k_B * T / (self.mu * m_u * g)
         nabla_stable = 3 * kappa_val * rho * Hp * L / (64 * np.pi * r**2 * sigma * T**4)
@@ -106,14 +106,10 @@ class StellarModel:
 
         f = lambda xi: ((xi + a2) * xi + a1) * xi + a0
         
-        # Bracket the root
-        hi = 1.0
-        for _ in range(100):
-            if f(hi) > 0: 
-                break
-            hi *= 2.0
-        else:
-            raise RuntimeError("Failed to bracket xi root for convection.")
+        # Robust root bracketing
+        hi = max(1.0, abs(a0)**0.33)
+        while f(hi) <= 0:
+            hi *= 10.0
 
         xi = brentq(f, 0.0, hi, xtol=1e-12)
         nabla_star = xi**2 + (U * Om / lm) * xi + nabla_ad
